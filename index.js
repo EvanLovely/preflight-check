@@ -3,26 +3,31 @@
 var exec = require('child_process').execSync;
 var path = require('path');
 var semver = require('semver');
+var inquirer = require('inquirer');
 var debug = require('debug')('dependency-preflight');
 var config = require('rc')('dependency-preflight', {
+  askBeforeUpdating: true,
   sets: [
     {
       type: 'npm',
       file: 'package.json',
       cmd: 'npm update',
       devDeps: true,
-      updateNonSemver: false
+      updateNonSemver: true
     }
   ]
 });
 
 debug(`CWD: ${process.cwd()}`);
 
-function sh(cmd, log) {
+function sh(cmd, log, directory) {
   var result = '';
   try {
     debug(`Running ${cmd} in ${process.cwd()}`);
-    result = exec(cmd, { encoding: 'utf8' });
+    result = exec(cmd, {
+      cwd: directory || process.cwd(),
+      encoding: 'utf8'
+    });
   } catch (e) {
     if (e.status !== 0) {
       console.error(`Error running "${cmd}" with code ${e.status}`);
@@ -34,10 +39,10 @@ function sh(cmd, log) {
   }
 }
 
-function checkNpmDeps(dep, pkg) {
-  var ver = pkg.dependencies[dep];
-  var depPath = path.join(process.cwd(), 'node_modules', dep);
-  var pkgPath = path.join(depPath, 'package.json');
+function checkDeps(dep, deps, workingDir, folder, manifestFile, opt) {
+  var ver = deps[dep];
+  var depPath = path.join(workingDir, folder, dep);
+  var pkgPath = path.join(depPath, manifestFile);
   debug(`Looking at ${dep} asking for ${ver}`);
   debug(`Looking at: ${pkgPath}`);
   var installedPkg = require(pkgPath);
@@ -66,28 +71,32 @@ function checkNpmDeps(dep, pkg) {
   } else {
     debug(`Not valid: ${ver} for ${dep}`);
     info = {
-      needsUpdate: false,
+      needsUpdate: opt.updateNonSemver,
       validSemver: false,
       name: dep,
       installedVersion: installedPkg.version,
       requestedVersion: ver
     }
   }
-  debug(info);
+  // debug(info);
+  debug('------');
   return info;
 }
 
 function checkNpm(opt) {
-  var results = [];
   var pkg = require(path.join(process.cwd(), opt.file));
-  var deps = Object.keys(pkg.dependencies).map(dep => checkNpmDeps(dep, pkg));
+  var deps = pkg.dependencies;
   if (opt.devDeps) {
-    var devDeps = Object.keys(pkg.devDependencies).map(dep => checkNpmDeps(dep, pkg));
-    results = [].concat(deps, devDeps);
-  } else {
-    results = deps;
+    Object.assign(deps, pkg.devDependencies);
   }
-  return results;
+  return Object.keys(deps).map(dep => checkDeps(dep, deps, process.cwd(), 'node_modules', 'package.json', opt));
+}
+
+function updateNpm(item) {
+  var updateCommand = `${item.set.cmd} ${item.deps.map(dep => dep.name).join(' ')}`;
+  var workingDirectory = path.dirname(path.join(process.cwd(), item.set.file));
+  debug(`About to run: "${updateCommand}" in ${workingDirectory}`);
+  return sh(updateCommand, true, workingDirectory);
 }
 
 var toUpdate = config.sets.map(set => {
@@ -95,11 +104,34 @@ var toUpdate = config.sets.map(set => {
     var npmResults = checkNpm(set);
     // console.log(npmResults);
     var npmToUpdate = npmResults.filter(item => item.needsUpdate);
-    console.log(`npm check done. ${npmToUpdate.length} want updates: ${npmToUpdate.map(item => item.name).join(', ')}`);
-    return {
-      set: set,
-      deps: npmToUpdate
-    };
+    if (npmToUpdate.length) {
+      console.log(`Checked ${npmResults.length} npm deps. ${npmToUpdate.length} want updates: ${npmToUpdate.map(item => item.name).join(', ')}`);
+      return {
+        set: set,
+        deps: npmToUpdate
+      };
+    } else {
+      console.log(`Checked ${npmResults.length} npm deps. All up to date.`);
+      return {};
+    }
   }
-});
+}).filter(item => item.deps);
 
+if (toUpdate.length) {
+  if (config.askBeforeUpdating) {
+    inquirer.prompt([
+      {
+        type: 'confirm',
+        name: 'update',
+        message: 'Want to update these?'
+      }
+    ]).then(answers => {
+      if (answers.update) {
+        toUpdate.forEach(updateNpm);
+      }
+    });
+  } else {
+    console.log('askBeforeUpdating disabled; updating...');
+    toUpdate.forEach(updateNpm);
+  }
+}
