@@ -1,6 +1,6 @@
 {
   "name": "dependency-preflight",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Checks installed dependencies versus those listed in manifest file.",
   "main": "index.js",
   "bin": {
