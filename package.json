@@ -4,7 +4,8 @@
   "description": "Checks installed dependencies versus those listed in manifest file.",
   "main": "index.js",
   "bin": {
-    "dependency-preflight": "index.js"
+    "dependency-preflight": "index.js",
+    "preflight": "index.js"
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"

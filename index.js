@@ -13,7 +13,7 @@ var config = require('rc')('dependency-preflight', {
       file: 'package.json',
       cmd: 'npm update',
       devDeps: true,
-      updateNonSemver: true
+      updateNonSemver: false
     }
   ]
 });
