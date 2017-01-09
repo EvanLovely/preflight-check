@@ -1,14 +1,14 @@
-# Dependency Preflight
+# Preflight Check
 
-Checks installed dependencies versus those listed in manifest file.
+Checks if files (like `package.json`) have changed since last run, and if so it runs a command (like installing dependencies).
 
 # Installation
 
-    npm install dependency-preflight --save
+    npm install preflight-check --save
 
 ## Usage
 
-Create a file called `.dependency-preflightrc` containing the below content or pass in command line arguments as outlined in [`rc`](https://www.npmjs.com/package/rc).
+Create a file called `.preflight-checkrc` containing the below content or pass in command line arguments as outlined in [`rc`](https://www.npmjs.com/package/rc).
 
 ```json
 {
@@ -34,7 +34,7 @@ To ensure this is ran, before starting, placing it as a prestart hook in `packag
 ```json
 {
   "scripts": {
-    "prestart": "dependency-preflight",
+    "prestart": "preflight-check",
     "start": "gulp"
   }
 }
@@ -44,4 +44,4 @@ To ensure this is ran, before starting, placing it as a prestart hook in `packag
 
 This uses the [`debug`](https://www.npmjs.com/package/debug) module; simply run this to see extra debugging info:
 
-    DEBUG=dependency-preflight ./node_modules/.bin/dependency-preflight
+    DEBUG=preflight-check ./node_modules/.bin/preflight-check

@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 const fs = require('fs');
-const debug = require('debug')('dependency-preflight');
+const debug = require('debug')('preflight-check');
 const path = require('path');
 const inquirer = require('inquirer');
 const execSync = require('child_process').execSync;
 const checksum = require('checksum');
-const config = require('rc')('dependency-preflight', {
+const config = require('rc')('preflight-check', {
   sets: [],
 });
 

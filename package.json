@@ -1,10 +1,10 @@
 {
-  "name": "dependency-preflight",
+  "name": "preflight-check",
   "version": "1.1.0",
   "description": "Checks files for changes, then runs a command if different.",
   "main": "index.js",
   "bin": {
-    "dependency-preflight": "index.js",
+    "preflight-check": "index.js",
     "preflight": "index.js"
   },
   "scripts": {
@@ -27,10 +27,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/EvanLovely/dependency-preflight.git"
+    "url": "git+https://github.com/EvanLovely/preflight-check.git"
   },
   "bugs": {
-    "url": "https://github.com/EvanLovely/dependency-preflight/issues"
+    "url": "https://github.com/EvanLovely/preflight-check/issues"
   },
-  "homepage": "https://github.com/EvanLovely/dependency-preflight#readme"
+  "homepage": "https://github.com/EvanLovely/preflight-check#readme"
 }
