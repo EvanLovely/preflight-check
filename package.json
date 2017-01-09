@@ -1,7 +1,7 @@
 {
   "name": "dependency-preflight",
   "version": "1.0.2",
-  "description": "Checks installed dependencies versus those listed in manifest file.",
+  "description": "Checks files for changes, then runs a command if different.",
   "main": "index.js",
   "bin": {
     "dependency-preflight": "index.js",

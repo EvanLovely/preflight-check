@@ -1,137 +1,108 @@
 #!/usr/bin/env node
 'use strict';
-var exec = require('child_process').execSync;
-var path = require('path');
-var semver = require('semver');
-var inquirer = require('inquirer');
-var debug = require('debug')('dependency-preflight');
-var config = require('rc')('dependency-preflight', {
-  askBeforeUpdating: true,
-  sets: [
-    {
-      type: 'npm',
-      file: 'package.json',
-      cmd: 'npm update',
-      devDeps: true,
-      updateNonSemver: false
-    }
-  ]
+const fs = require('fs');
+const debug = require('debug')('dependency-preflight');
+const path = require('path');
+const inquirer = require('inquirer');
+const execSync = require('child_process').execSync;
+const checksum = require('checksum');
+const config = require('rc')('dependency-preflight', {
+  sets: []
 });
 
-debug(`CWD: ${process.cwd()}`);
+const changedSets = [];
+const checksumsDataPath = path.join(__dirname, './checksums.json');
+debug(`checksums.json path: ${checksumsDataPath}`);
+let checksums;
 
-function sh(cmd, log, directory) {
-  var result = '';
-  try {
-    debug(`Running ${cmd} in ${process.cwd()}`);
-    result = exec(cmd, {
-      cwd: directory || process.cwd(),
-      encoding: 'utf8'
-    });
-  } catch (e) {
-    if (e.status !== 0) {
-      console.error(`Error running "${cmd}" with code ${e.status}`);
-    }
-  } finally {
-    if (log) {
-      console.log(result);
-    }
-  }
+try {
+  checksums = require(checksumsDataPath);
+  debug(`${Object.keys(checksums).length} checksums read from file: ${Object.keys(checksums)}`);
+} catch (e) {
+  checksums = {};
 }
 
-function checkDeps(dep, deps, workingDir, folder, manifestFile, opt) {
-  var ver = deps[dep];
-  var depPath = path.join(workingDir, folder, dep);
-  var pkgPath = path.join(depPath, manifestFile);
-  debug(`Looking at ${dep} asking for ${ver}`);
-  debug(`Looking at: ${pkgPath}`);
-  var installedPkg = require(pkgPath);
-  var info;
-  if (semver.validRange(ver) || semver.valid(ver)) {
-    debug(`Installed version is ${installedPkg.version}`);
-    if (semver.satisfies(installedPkg.version, ver)) {
-      debug(`No update needed: ${dep} is good; wants ${ver} and has ${installedPkg.version}`);
-      info = {
-        needsUpdate: false,
-        validSemver: true,
-        name: dep,
-        installedVersion: installedPkg.version,
-        requestedVersion: ver
-      };
-    } else {
-      debug(`Needs update: ${dep} wants ${ver} but has ${installedPkg.version}`);
-      info = {
-        needsUpdate: true,
-        validSemver: true,
-        name: dep,
-        installedVersion: installedPkg.version,
-        requestedVersion: ver
-      };
-    }
+function compareFile(value) {
+  if (!checksums[value.file]) {
+    debug(`${value.file} not already in checksums.json, adding...`);
+    checksums[value.file] = value.sum;
+  } else if (checksums[value.file] !== value.sum) {
+    debug(`${value.file} has different sum than what is in checksums.json`);
+    changedSets.push(value);
   } else {
-    debug(`Not valid: ${ver} for ${dep}`);
-    info = {
-      needsUpdate: opt.updateNonSemver,
-      validSemver: false,
-      name: dep,
-      installedVersion: installedPkg.version,
-      requestedVersion: ver
-    }
+    debug(`${value.file} has same sum than what is in checksums.json`);
   }
-  // debug(info);
-  debug('------');
-  return info;
 }
 
-function checkNpm(opt) {
-  var pkg = require(path.join(process.cwd(), opt.file));
-  var deps = pkg.dependencies;
-  if (opt.devDeps) {
-    Object.assign(deps, pkg.devDependencies);
-  }
-  return Object.keys(deps).map(dep => checkDeps(dep, deps, process.cwd(), 'node_modules', 'package.json', opt));
-}
-
-function updateNpm(item) {
-  var updateCommand = `${item.set.cmd} ${item.deps.map(dep => dep.name).join(' ')}`;
-  var workingDirectory = path.dirname(path.join(process.cwd(), item.set.file));
-  debug(`About to run: "${updateCommand}" in ${workingDirectory}`);
-  return sh(updateCommand, true, workingDirectory);
-}
-
-var toUpdate = config.sets.map(set => {
-  if (set.type === 'npm') {
-    var npmResults = checkNpm(set);
-    // console.log(npmResults);
-    var npmToUpdate = npmResults.filter(item => item.needsUpdate);
-    if (npmToUpdate.length) {
-      console.log(`Checked ${npmResults.length} npm deps. ${npmToUpdate.length} want updates: ${npmToUpdate.map(item => item.name).join(', ')}`);
-      return {
-        set: set,
-        deps: npmToUpdate
-      };
-    } else {
-      console.log(`Checked ${npmResults.length} npm deps. All up to date.`);
-      return {};
-    }
-  }
-}).filter(item => item.deps);
-
-if (toUpdate.length) {
-  if (config.askBeforeUpdating) {
-    inquirer.prompt([
-      {
-        type: 'confirm',
-        name: 'update',
-        message: 'Want to update these?'
+function handleChangedSets(sets) {
+  debug(`need updates: `, sets.map(set => set.file));
+  inquirer.prompt([{
+    type: 'checkbox',
+    name: 'setsToUpdate',
+    message: 'Suggested updates:',
+    choices: sets.map(set => ({
+      name: `${set.file} changed; will run: ${set.cmd}`,
+      value: set,
+    })),
+    default: sets,
+  }]).then((answers) => {
+    // console.log(answers);
+    answers.setsToUpdate.forEach(set => {
+      const cmd = Array.isArray(set.cmd) ? set.cmd.join(' && ') : set.cmd;
+      console.log('-------------');
+      console.log(`Running: ${cmd}`);
+      console.log('-------------');
+      try {
+        const updateCmd = execSync(cmd, {encoding: 'utf8'});
+        console.log(updateCmd);
+        updateChecksumsFile(set);
+      } catch (e) {
+        console.log(e);
       }
-    ]).then(answers => {
-      if (answers.update) {
-        toUpdate.forEach(updateNpm);
-      }
+      console.log('-------------');
+      console.log(`Done running: ${cmd}`);
+      console.log('=============');
     });
-  } else {
-    console.log('askBeforeUpdating disabled; updating...');
-    toUpdate.forEach(updateNpm);
-  }
+  });
 }
+
+function updateChecksumsFile(set) {
+  checksums[set.file] = set.sum;
+  writeChecksumsFile();
+}
+
+function writeChecksumsFile() {
+  debug(`Writing ${Object.keys(checksums).length} checksums to file.`);
+  fs.writeFileSync(checksumsDataPath, JSON.stringify(checksums, null, '  '));
+}
+
+function go() {
+  const promises = [];
+  config.sets.forEach(set => {
+    const thisPromise = new Promise((resolve, reject) => {
+      checksum.file(set.file, (err, sum) => {
+        if (err) {
+          reject(err);
+        }
+        set.sum = sum;
+        resolve(set);
+      });
+    });
+    promises.push(thisPromise);
+  });
+
+  Promise.all(promises).then(values => {
+    values.forEach(compareFile);
+    if (changedSets.length) {
+      handleChangedSets(changedSets);
+    } else {
+      writeChecksumsFile();
+      console.log('all is up to date');
+    }
+  }, reason => {
+    console.log('reason', reason);
+  });
+
+}
+
+go();
