@@ -1,6 +1,6 @@
 {
   "name": "dependency-preflight",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "description": "Checks files for changes, then runs a command if different.",
   "main": "index.js",
   "bin": {
