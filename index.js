@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-'use strict';
 const fs = require('fs');
 const debug = require('debug')('dependency-preflight');
 const path = require('path');
@@ -7,7 +6,7 @@ const inquirer = require('inquirer');
 const execSync = require('child_process').execSync;
 const checksum = require('checksum');
 const config = require('rc')('dependency-preflight', {
-  sets: []
+  sets: [],
 });
 
 const changedSets = [];
@@ -16,10 +15,20 @@ debug(`checksums.json path: ${checksumsDataPath}`);
 let checksums;
 
 try {
-  checksums = require(checksumsDataPath);
+  checksums = JSON.parse(fs.readFileSync(checksumsDataPath, { encoding: 'utf8' }));
   debug(`${Object.keys(checksums).length} checksums read from file: ${Object.keys(checksums)}`);
 } catch (e) {
   checksums = {};
+}
+
+function writeChecksumsFile() {
+  debug(`Writing ${Object.keys(checksums).length} checksums to file.`);
+  fs.writeFileSync(checksumsDataPath, JSON.stringify(checksums, null, '  '));
+}
+
+function updateChecksumsFile(set) {
+  checksums[set.file] = set.sum;
+  writeChecksumsFile();
 }
 
 function compareFile(value) {
@@ -35,7 +44,7 @@ function compareFile(value) {
 }
 
 function handleChangedSets(sets) {
-  debug(`need updates: `, sets.map(set => set.file));
+  debug(`need updates: ${sets.map(set => set.file)}`);
   inquirer.prompt([{
     type: 'checkbox',
     name: 'setsToUpdate',
@@ -47,62 +56,51 @@ function handleChangedSets(sets) {
     default: sets,
   }]).then((answers) => {
     // console.log(answers);
-    answers.setsToUpdate.forEach(set => {
+    answers.setsToUpdate.forEach((set) => {
       const cmd = Array.isArray(set.cmd) ? set.cmd.join(' && ') : set.cmd;
-      console.log('-------------');
-      console.log(`Running: ${cmd}`);
-      console.log('-------------');
+      process.stdout.write('-------------\n');
+      process.stdout.write(`Running: ${cmd}\n`);
+      process.stdout.write('-------------\n');
       try {
-        const updateCmd = execSync(cmd, {encoding: 'utf8'});
-        console.log(updateCmd);
+        const updateCmd = execSync(cmd, { encoding: 'utf8' });
+        process.stdout.write(updateCmd);
         updateChecksumsFile(set);
       } catch (e) {
-        console.log(e);
+        process.stdout.write(e);
       }
-      console.log('-------------');
-      console.log(`Done running: ${cmd}`);
-      console.log('=============');
+      process.stdout.write('\n-------------\n');
+      process.stdout.write(`Done running: ${cmd}\n`);
+      process.stdout.write('=============\n');
     });
   });
 }
 
-function updateChecksumsFile(set) {
-  checksums[set.file] = set.sum;
-  writeChecksumsFile();
-}
-
-function writeChecksumsFile() {
-  debug(`Writing ${Object.keys(checksums).length} checksums to file.`);
-  fs.writeFileSync(checksumsDataPath, JSON.stringify(checksums, null, '  '));
-}
-
 function go() {
   const promises = [];
-  config.sets.forEach(set => {
+  config.sets.forEach((set) => {
     const thisPromise = new Promise((resolve, reject) => {
       checksum.file(set.file, (err, sum) => {
         if (err) {
           reject(err);
         }
-        set.sum = sum;
+        set.sum = sum; // eslint-disable-line no-param-reassign
         resolve(set);
       });
     });
     promises.push(thisPromise);
   });
 
-  Promise.all(promises).then(values => {
+  Promise.all(promises).then((values) => {
     values.forEach(compareFile);
     if (changedSets.length) {
       handleChangedSets(changedSets);
     } else {
       writeChecksumsFile();
-      console.log('all is up to date');
+      process.stdout.write('All preflight files checked, no updates needed.');
     }
-  }, reason => {
-    console.log('reason', reason);
+  }, (reason) => {
+    process.stdout.write('Checksum check failed; reason:\n', reason);
   });
-
 }
 
 go();
