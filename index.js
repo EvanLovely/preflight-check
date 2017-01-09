@@ -2,6 +2,7 @@
 const fs = require('fs');
 const debug = require('debug')('preflight-check');
 const path = require('path');
+const chalk = require('chalk');
 const inquirer = require('inquirer');
 const execSync = require('child_process').execSync;
 const checksum = require('checksum');
@@ -45,12 +46,22 @@ function compareFile(value) {
 
 function handleChangedSets(sets) {
   debug(`need updates: ${sets.map(set => set.file)}`);
+  process.stdout.write(chalk.blue.bold(`The ${sets.length} files below have changed since last run and would like to run these commands:\n\n`));
+  sets.forEach((set, i) => {
+    const linePrefix = set.title ? `${i + 1}) ${set.title}` : `${i + 1})`;
+    const cmd = Array.isArray(set.cmd) ? set.cmd.join(' && ') : set.cmd;
+    process.stdout.write(chalk.underline(`${linePrefix} ${chalk.bold(set.file)}\n`));
+    process.stdout.write('Command to run: ');
+    process.stdout.write(chalk.dim(cmd));
+    process.stdout.write('\n\n');
+  });
+
   inquirer.prompt([{
     type: 'checkbox',
     name: 'setsToUpdate',
-    message: 'Suggested updates:',
-    choices: sets.map(set => ({
-      name: `${set.file} changed; will run: ${set.cmd}`,
+    message: 'Which commands to run?:',
+    choices: sets.map((set, i) => ({
+      name: `${i + 1}) ${set.title ? set.title : set.file}`,
       value: set,
     })),
     default: sets,
@@ -96,7 +107,7 @@ function go() {
       handleChangedSets(changedSets);
     } else {
       writeChecksumsFile();
-      process.stdout.write('All preflight files checked, no updates needed.');
+      process.stdout.write('All preflight files checked, no updates needed.\n');
     }
   }, (reason) => {
     process.stdout.write('Checksum check failed; reason:\n', reason);
