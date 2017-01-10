@@ -3,6 +3,7 @@ const fs = require('fs');
 const debug = require('debug')('preflight-check');
 const path = require('path');
 const chalk = require('chalk');
+const glob = require('glob');
 const inquirer = require('inquirer');
 const execSync = require('child_process').execSync;
 const checksum = require('checksum');
@@ -86,25 +87,50 @@ function handleChangedSets(sets) {
   });
 }
 
+function getChecksum(set) {
+  return new Promise((resolve, reject) => {
+    checksum.file(set.file, (err, sum) => {
+      if (err) {
+        reject(err);
+      }
+      set.sum = sum; // eslint-disable-line no-param-reassign
+      resolve(set);
+    });
+  });
+}
+
 function go() {
   const promises = [];
   config.sets.forEach((set) => {
-    const thisPromise = new Promise((resolve, reject) => {
-      checksum.file(set.file, (err, sum) => {
-        if (err) {
-          reject(err);
-        }
-        set.sum = sum; // eslint-disable-line no-param-reassign
-        resolve(set);
+    // @todo add support for `set.file` to be an array
+    if (glob.hasMagic(set.file)) {
+      glob.sync(set.file, {}).forEach((file) => {
+        const setData = Object.assign({}, set);
+        setData.originalFile = set.file;
+        setData.file = file;
+        promises.push(getChecksum(setData));
       });
-    });
-    promises.push(thisPromise);
+    } else {
+      promises.push(getChecksum(set));
+    }
+
   });
 
   Promise.all(promises).then((values) => {
     values.forEach(compareFile);
-    if (changedSets.length) {
-      handleChangedSets(changedSets);
+    const uniqueSets = [];
+    changedSets.forEach((set) => {
+      if (uniqueSets.some((item) => set.cmd === item.cmd)) {
+        return false;
+      }
+      if (set.originalFile) {
+        set.file = set.originalFile; // eslint-disable-line no-param-reassign
+      }
+      uniqueSets.push(set);
+    });
+
+    if (uniqueSets.length) {
+      handleChangedSets(uniqueSets);
     } else {
       writeChecksumsFile();
       process.stdout.write('All preflight files checked, no updates needed.\n');
