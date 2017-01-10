@@ -113,20 +113,20 @@ function go() {
     } else {
       promises.push(getChecksum(set));
     }
-
   });
 
   Promise.all(promises).then((values) => {
     values.forEach(compareFile);
     const uniqueSets = [];
     changedSets.forEach((set) => {
-      if (uniqueSets.some((item) => set.cmd === item.cmd)) {
+      if (uniqueSets.some(item => set.cmd === item.cmd)) {
         return false;
       }
       if (set.originalFile) {
         set.file = set.originalFile; // eslint-disable-line no-param-reassign
       }
       uniqueSets.push(set);
+      return true;
     });
 
     if (uniqueSets.length) {
