@@ -1,6 +1,6 @@
 {
   "name": "preflight-check",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Checks files for changes, then runs a command if different.",
   "main": "index.js",
   "bin": {
