@@ -5,7 +5,8 @@ const path = require('path');
 const chalk = require('chalk');
 const glob = require('glob');
 const inquirer = require('inquirer');
-const execSync = require('child_process').execSync;
+const exec = require('child_process').exec;
+const series = require('async').series;
 const checksum = require('checksum');
 const config = require('rc')('preflight-check', {
   sets: [],
@@ -21,6 +22,19 @@ try {
   debug(`${Object.keys(checksums).length} checksums read from file: ${Object.keys(checksums)}`);
 } catch (e) {
   checksums = {};
+}
+
+function sh(cmd, cb) {
+  const child = exec(cmd, { encoding: 'utf8' });
+  child.stdout.on('data', data => process.stdout.write(data));
+  child.stderr.on('data', data => process.stdout.write(data));
+
+  child.on('close', (code) => {
+    if (code > 0) {
+      process.stdout.write(chalk.red(`Error with code ${code} after running: "${cmd}" \n`));
+    }
+    if (typeof cb === 'function') cb(code);
+  });
 }
 
 function writeChecksumsFile() {
@@ -43,6 +57,25 @@ function compareFile(value) {
   } else {
     debug(`${value.file} has same sum than what is in checksums.json`);
   }
+}
+
+function executeCmd(set, cb) {
+  const cmd = Array.isArray(set.cmd) ? set.cmd.join(' && ') : set.cmd;
+  process.stdout.write('-------------\n');
+  process.stdout.write(`Running: ${cmd}\n`);
+  process.stdout.write('-------------\n');
+  sh(cmd, (code) => {
+    process.stdout.write('\n-------------\n');
+    if (code === 0) {
+      process.stdout.write(`${chalk.green('Success')} running: ${cmd}\n`);
+      updateChecksumsFile(set);
+    } else {
+      process.stdout.write(`${chalk.red('Failed')} running: ${cmd}\n`);
+    }
+    process.stdout.write('=============\n');
+    set.code = code;
+    cb(null, set);
+  });
 }
 
 function handleChangedSets(sets) {
@@ -68,22 +101,26 @@ function handleChangedSets(sets) {
     default: sets,
   }]).then((answers) => {
     // console.log(answers);
-    answers.setsToUpdate.forEach((set) => {
-      const cmd = Array.isArray(set.cmd) ? set.cmd.join(' && ') : set.cmd;
-      process.stdout.write('-------------\n');
-      process.stdout.write(`Running: ${cmd}\n`);
-      process.stdout.write('-------------\n');
-      try {
-        const updateCmd = execSync(cmd, { encoding: 'utf8' });
-        process.stdout.write(updateCmd);
-        updateChecksumsFile(set);
-      } catch (e) {
-        process.stdout.write(e);
-      }
-      process.stdout.write('\n-------------\n');
-      process.stdout.write(`Done running: ${cmd}\n`);
-      process.stdout.write('=============\n');
-    });
+    const sets = answers.setsToUpdate;
+    if (sets.length) {
+      const tasks = sets.map((set) => {
+        return (cb) => {
+          executeCmd(set, cb);
+        };
+      });
+      series(tasks, (err, results) => {
+        process.stdout.write(chalk.bold('All Done! Summary:\n'));
+        results.forEach((result) => {
+          const message = `${result.title ? result.title + ' ' : ''} Command: ${result.cmd}\n`;
+          if (result.code === 0) {
+            process.stdout.write(chalk.green(`Success: ${message}`));
+          } else {
+            process.stdout.write(chalk.red(`Failed: ${message}`));
+          }
+        });
+        writeChecksumsFile();
+      });
+    }
   });
 }
 
