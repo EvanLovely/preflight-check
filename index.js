@@ -37,6 +37,36 @@ function sh(cmd, cb) {
   });
 }
 
+function getChecksum(set) {
+  return new Promise((resolve, reject) => {
+    checksum.file(set.file, (err, sum) => {
+      if (err) {
+        reject(err);
+      }
+      set.sum = sum; // eslint-disable-line no-param-reassign
+      resolve(set);
+    });
+  });
+}
+
+function getChecksums(sets) {
+  const promises = [];
+  sets.forEach((set) => {
+    // @todo add support for `set.file` to be an array
+    if (glob.hasMagic(set.file)) {
+      glob.sync(set.file, {}).forEach((file) => {
+        const setData = Object.assign({}, set);
+        setData.originalFile = set.file;
+        setData.file = file;
+        promises.push(getChecksum(setData));
+      });
+    } else {
+      promises.push(getChecksum(set));
+    }
+  });
+  return promises;
+}
+
 function writeChecksumsFile() {
   debug(`Writing ${Object.keys(checksums).length} checksums to file.`);
   fs.writeFileSync(checksumsDataPath, JSON.stringify(checksums, null, '  '));
@@ -45,6 +75,15 @@ function writeChecksumsFile() {
 function updateChecksumsFile(set) {
   checksums[set.file] = set.sum;
   writeChecksumsFile();
+}
+
+function updateChecksums() {
+  Promise.all(getChecksums(config.sets)).then((values) => {
+    values.forEach((value) => {
+      checksums[value.file] = value.sum;
+    });
+    writeChecksumsFile();
+  });
 }
 
 function compareFile(value) {
@@ -101,17 +140,17 @@ function handleChangedSets(sets) {
     default: sets,
   }]).then((answers) => {
     // console.log(answers);
-    const sets = answers.setsToUpdate;
-    if (sets.length) {
-      const tasks = sets.map((set) => {
-        return (cb) => {
-          executeCmd(set, cb);
-        };
-      });
+    if (answers.setsToUpdate.length) {
+      const tasks = answers.setsToUpdate.map(set => cb => executeCmd(set, cb));
+      //   return (cb) => {
+      //     executeCmd(set, cb);
+      //   };
+      // });
       series(tasks, (err, results) => {
         process.stdout.write(chalk.bold('All Done! Summary:\n'));
         results.forEach((result) => {
-          const message = `${result.title ? result.title + ' ' : ''} Command: ${result.cmd}\n`;
+          const cmd = Array.isArray(result.cmd) ? result.cmd.join(' && ') : result.cmd;
+          const message = `${result.title ? `${result.title} ` : ''}Command: ${cmd}\n`;
           if (result.code === 0) {
             process.stdout.write(chalk.green(`Success: ${message}`));
           } else {
@@ -121,45 +160,6 @@ function handleChangedSets(sets) {
         updateChecksums();
       });
     }
-  });
-}
-
-function getChecksum(set) {
-  return new Promise((resolve, reject) => {
-    checksum.file(set.file, (err, sum) => {
-      if (err) {
-        reject(err);
-      }
-      set.sum = sum; // eslint-disable-line no-param-reassign
-      resolve(set);
-    });
-  });
-}
-
-function getChecksums(sets) {
-  const promises = [];
-  sets.forEach((set) => {
-    // @todo add support for `set.file` to be an array
-    if (glob.hasMagic(set.file)) {
-      glob.sync(set.file, {}).forEach((file) => {
-        const setData = Object.assign({}, set);
-        setData.originalFile = set.file;
-        setData.file = file;
-        promises.push(getChecksum(setData));
-      });
-    } else {
-      promises.push(getChecksum(set));
-    }
-  });
-  return promises;
-}
-
-function updateChecksums() {
-  Promise.all(getChecksums(config.sets)).then((values) => {
-    values.forEach((value) => {
-      checksums[value.file] = value.sum;
-    });
-    writeChecksumsFile();
   });
 }
 
