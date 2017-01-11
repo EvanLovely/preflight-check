@@ -118,7 +118,7 @@ function handleChangedSets(sets) {
             process.stdout.write(chalk.red(`Failed: ${message}`));
           }
         });
-        writeChecksumsFile();
+        updateChecksums();
       });
     }
   });
@@ -136,9 +136,9 @@ function getChecksum(set) {
   });
 }
 
-function go() {
+function getChecksums(sets) {
   const promises = [];
-  config.sets.forEach((set) => {
+  sets.forEach((set) => {
     // @todo add support for `set.file` to be an array
     if (glob.hasMagic(set.file)) {
       glob.sync(set.file, {}).forEach((file) => {
@@ -151,8 +151,20 @@ function go() {
       promises.push(getChecksum(set));
     }
   });
+  return promises;
+}
 
-  Promise.all(promises).then((values) => {
+function updateChecksums() {
+  Promise.all(getChecksums(config.sets)).then((values) => {
+    values.forEach((value) => {
+      checksums[value.file] = value.sum;
+    });
+    writeChecksumsFile();
+  });
+}
+
+function go() {
+  Promise.all(getChecksums(config.sets)).then((values) => {
     values.forEach(compareFile);
     const uniqueSets = [];
     changedSets.forEach((set) => {
