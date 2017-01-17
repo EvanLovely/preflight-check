@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+'use strict';
 const fs = require('fs');
 const debug = require('debug')('preflight-check');
 const path = require('path');
