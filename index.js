@@ -6,7 +6,8 @@ const path = require('path');
 const chalk = require('chalk');
 const glob = require('glob');
 const inquirer = require('inquirer');
-const exec = require('child_process').exec;
+const spawn = require('child_process').spawn;
+const spawnargs = require('spawn-args');
 const series = require('async').series;
 const checksum = require('checksum');
 const config = require('rc')('preflight-check', {
@@ -26,7 +27,9 @@ try {
 }
 
 function sh(cmd, cb) {
-  const child = exec(cmd, { encoding: 'utf8' });
+  const args = spawnargs(cmd);
+  const command = args.shift();
+  const child = spawn(command, args);
   child.stdout.on('data', data => process.stdout.write(data));
   child.stderr.on('data', data => process.stdout.write(data));
 
