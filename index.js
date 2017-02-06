@@ -26,7 +26,12 @@ try {
 }
 
 function sh(cmd, cb) {
-  const child = exec(cmd, { encoding: 'utf8' });
+  const child = exec(cmd, {
+    encoding: 'utf8',
+    env: Object.assign({}, process.env, {
+      'FORCE_COLOR': 1
+    })
+  });
   child.stdout.on('data', data => process.stdout.write(data));
   child.stderr.on('data', data => process.stdout.write(data));
 
